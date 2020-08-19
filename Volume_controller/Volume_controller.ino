@@ -102,7 +102,7 @@ bool newData = false;
 const char* testJsonInput = 
   "{\"type\": \"data\",\"applications\": [{\"Title\": \"Spotify\",\"Volume\": 100,\"Color\": 2016},{\"Title\": \"Chrome\",\"Volume\": 100,\"Color\": 31},{\"Title\": \"Discord\",\"Volume\": 100,\"Color\": 65504},{\"Title\": \"Apex Legends\",\"Volume\": 100,\"Color\": 63488}]}";
 
-StaticJsonDocument<256> jsonDoc;
+//StaticJsonDocument<256> jsonDoc;
 
 void render_dividers(void)
 {
@@ -258,18 +258,18 @@ void setup(void)
   screen.Set_Text_colour(WHITE);
 
   //Read from test json
-  DeserializationError err = deserializeJson(jsonDoc, testJsonInput);
-  if(err) {
-    Serial.print("ERROR:");
-    Serial.println(err.c_str());
-  }
-
-  const char* type = jsonDoc["type"];
-  for(int i = 0; i < 4; i++) {
-    title[i] = (char*)jsonDoc["applications"][i]["Title"];
-    volume[i] = jsonDoc["applications"][i]["Volume"];
-    color[i] = jsonDoc["applications"][i]["Color"];
-  }
+//  DeserializationError err = deserializeJson(jsonDoc, testJsonInput);
+//  if(err) {
+//    Serial.print("ERROR:");
+//    Serial.println(err.c_str());
+//  }
+//
+//  const char* type = jsonDoc["type"];
+//  for(int i = 0; i < 4; i++) {
+//    title[i] = (char*)jsonDoc["applications"][i]["Title"];
+//    volume[i] = jsonDoc["applications"][i]["Volume"];
+//    color[i] = jsonDoc["applications"][i]["Color"];
+//  }
 
   render_full();
   
@@ -330,53 +330,31 @@ void loop()
 }
 
 void checkForSerialCommand(){
-  static byte i = 0;
-  char endMarker = '\n';
-  char rc;
- 
-  while (Serial.available() > 0 && newData == false) {
-    rc = Serial.read();
+  //Read from test json
+//  DeserializationError err = deserializeJson(jsonDoc, Serial);
+//  if(err) {
+//    Serial.print("ERROR:");
+//    Serial.println(err.c_str());
+//  }
+  if(Serial.available()){
+    DynamicJsonBuffer jb;
+    JsonObject& root = jb.parseObject(Serial);
   
-    if (rc != endMarker) {
-      receivedChars[i] = rc;
-      i++;
-      if (i >= numChars) {
-        i = numChars - 1;
-      }
-    }
-    else {
-      receivedChars[i] = '\0'; // terminate the string
-      i = 0;
-
-      newData = true;
-
-      //Read from test json
-      Serial.println(receivedChars);
-      DeserializationError err = deserializeJson(jsonDoc, receivedChars);
-      if(err) {
-        Serial.print("ERROR:");
-        Serial.println(err.c_str());
-      }
-
-      const char* type = jsonDoc["type"];
-      if(strcmp(type, "data") != 0) {
-        for(int i = 0; i < 4; i++) {
-          char* newTitle = (char*)jsonDoc["applications"][i]["Title"];
-          if(sizeof(newTitle) > 0) {
-            title[i] = newTitle;
-          }
-          //volume[i] = jsonDoc["applications"][i]["Volume"];
-          uint16_t newColor = jsonDoc["applications"][i]["Color"];
-          if(newColor != BLACK) {
-            color[i] = newColor;
-          } 
+    
+    const char* type = root["type"];
+    if(strcmp(type, "data") == 0) {
+      for(int i = 0; i < 4; i++) {
+        char* newTitle = (char*)root["applications"][i]["Title"];
+        if(sizeof(newTitle) > 0) {
+          title[i] = newTitle;
         }
+        //volume[i] = jsonDoc["applications"][i]["Volume"];
+        uint16_t newColor = root["applications"][i]["Color"];
+        if(newColor != BLACK) {
+          color[i] = newColor;
+        } 
       }
-      if(!err) {
-        render_full();
-      }
-      
-      newData = false;
+      render_full();
     }
   }
 }
