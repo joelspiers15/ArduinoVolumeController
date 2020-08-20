@@ -100,7 +100,7 @@ char receivedChars[numChars];
 bool newData = false;
 
 const char* testJsonInput = 
-  "{\"type\": \"data\",\"applications\": [{\"Title\": \"Spotify\",\"Volume\": 100,\"Color\": 2016},{\"Title\": \"Chrome\",\"Volume\": 100,\"Color\": 31},{\"Title\": \"Discord\",\"Volume\": 100,\"Color\": 65504},{\"Title\": \"Apex Legends\",\"Volume\": 100,\"Color\": 63488}]}";
+  "{\"type\": \"data\",\"applications\": [{\"Title\": \"Spotify\",\"Volume\": 100,\"Color\": 2016},{\"Title\": \"Chrome\",\"Volume\": 100,\"Color\": 31},{\"Title\": \"Discord\",\"Volume\": 100,\"Color\": 65504},{\"Title\": \"Overwatch\",\"Volume\": 100,\"Color\": 63488}]}";
 
 //StaticJsonDocument<256> jsonDoc;
 
@@ -137,30 +137,33 @@ void render_error(String message) {
   //Nothing for now
 }
 
-void render_icon(int16_t x, int16_t y, uint16_t *data) {
+void render_icon(int section) {
+  int16_t x = xOrigin[section] + ICON_PADDING;
+  int16_t y = yOrigin[section] + ICON_PADDING;
 
-  screen.Draw_Rectangle(
+  screen.Fill_Rect(
     x,
     y,
-    x + ICON_SIZE,
-    y + ICON_SIZE
+    ICON_SIZE,
+    ICON_SIZE,
+    WHITE
   );
 
-//  for (int yPos = 0; yPos < ICON_SIZE; yPos++) {
-//    for (int xPos = 0; xPos < ICON_SIZE; xPos++) {
-//      //      screen.Set_Draw_color(WHITE);
-//      //      screen.Draw_Pixel(xPos + x, yPos + y);
-//      uint16_t color = pgm_read_word_near(data + xPos + (yPos * ICON_SIZE));
-//      //      screen.Fill_Rect(0, 200, screen.Get_Display_Height(), 30, BLACK);
-//      //      screen.Print_String("0x" + String(color, HEX) + "\t i=" + String(xPos+yPos), 0, 200);
-//      //      delay(250);
-//      screen.Set_Draw_color(color);
-//      screen.Draw_Pixel(xPos + x, yPos + y);
-//    }
-//    //    screen.Fill_Rect(0, 200, screen.Get_Display_Height(), 30, BLACK);
-//    //    screen.Print_String("NEW LINE", 0, 200);
-//    //    delay(250);
-//  }
+  Serial.println("REQUEST ICON " + String(section));
+  for (int yPos = 0; yPos < ICON_SIZE; yPos++) {
+    for (int xPos = 0; xPos < ICON_SIZE; xPos++) {
+      while(!Serial.available()) {
+        delay(10);
+      }
+      byte colorByte[2];
+      (uint16_t)Serial.readBytes(colorByte, 2);
+//      Serial.print("0x");
+//      Serial.println(color, HEX);
+      uint16_t color = word(colorByte[0], colorByte[1]);
+      screen.Set_Draw_color(color);
+      screen.Draw_Pixel(xPos + x, yPos + y);
+    }
+  }
 }
 
 // Render a full section (icon, title, volume)
@@ -177,17 +180,12 @@ void render_section(int section)
   render_volume(section);
 
   // Render Icon
-  render_icon(
-    xOrigin[section] + ICON_PADDING,
-    yOrigin[section] + ICON_PADDING,
-    icon[section]
-  );
+
 }
 
 // Render all sections
 void render_full(void)
 {
-  screen.Fill_Screen(BLACK);
   
   //render_dividers();
 
@@ -245,7 +243,7 @@ void render_menu(void)
 
 void setup(void)
 {
-  Serial.begin(9600);
+  Serial.begin(74880);
   screen.Init_LCD();
   screen.Set_Rotation(2);
   Serial.println(screen.Read_ID(), HEX);
@@ -254,7 +252,7 @@ void setup(void)
   // Setup graphics engine defaults
   screen.Set_Draw_color(WHITE);
   screen.Set_Text_Mode(1);
-  screen.Set_Text_Size(3);
+  screen.Set_Text_Size(2);
   screen.Set_Text_colour(WHITE);
 
   //Read from test json
@@ -272,6 +270,9 @@ void setup(void)
 //  }
 
   render_full();
+  for(int i = 0; i < 4; i++) {
+    render_icon(i);
+  }
   
 
   pinMode(13, OUTPUT);
