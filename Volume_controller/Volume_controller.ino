@@ -88,21 +88,18 @@ bool menuOpen = false;
 
 int16_t xOrigin[] = {0, SECTION_WIDTH, 0, SECTION_WIDTH};
 int16_t yOrigin[] = {0, 0, SECTION_HEIGHT, SECTION_HEIGHT};
-String title[] = {"", "", "", ""};
+String title[] = {"a", "a", "a", "a"};
 uint8_t volume[] = {25, 50, 75, 100};
 uint16_t color[] = {0x9874, BLUE, YELLOW, RED};
 uint8_t potPin[] = {15, 14, 13, 12};
 uint16_t icon[] = {NULL, NULL, NULL, NULL};
+bool active[] = {false, false, false, false};
+bool iconNeedsUpdate[] = {false, false, false, false};
 
 // Serial input variables
 const byte numChars = 256;
 char receivedChars[numChars];
 bool newData = false;
-
-const char* testJsonInput = 
-  "{\"type\": \"data\",\"applications\": [{\"Title\": \"Spotify\",\"Volume\": 100,\"Color\": 2016},{\"Title\": \"Chrome\",\"Volume\": 100,\"Color\": 31},{\"Title\": \"Discord\",\"Volume\": 100,\"Color\": 65504},{\"Title\": \"Overwatch\",\"Volume\": 100,\"Color\": 63488}]}";
-
-//StaticJsonDocument<256> jsonDoc;
 
 void render_dividers(void)
 {
@@ -113,7 +110,7 @@ void render_dividers(void)
   screen.Draw_Fast_HLine(0, (screen.Get_Display_Height() / 2) - 1, screen.Get_Display_Width());
 }
 
-// Render just the volume bar
+// Render just the text for a section
 void render_volume(int section) {
   int width = map(volume[section], 0, 100, 0, SECTION_WIDTH);
   screen.Fill_Rect(
@@ -133,23 +130,38 @@ void render_volume(int section) {
   );
 }
 
-void render_error(String message) {
-  //Nothing for now
+// Render just the text for a section
+void render_text(int section) {
+  screen.Fill_Rect(
+    xOrigin[section] + ICON_PADDING,
+    yOrigin[section] + (ICON_PADDING * 2) + ICON_SIZE,
+    SECTION_WIDTH,
+    VOLUME_HEIGHT,
+    BLACK
+    );
+  screen.Print_String(
+    title[section].substring(0,11),
+    xOrigin[section] + ICON_PADDING,
+    yOrigin[section] + (ICON_PADDING * 2) + ICON_SIZE
+  );
 }
 
 void render_icon(int section) {
   int16_t x = xOrigin[section] + ICON_PADDING;
   int16_t y = yOrigin[section] + ICON_PADDING;
 
-  screen.Fill_Rect(
-    x,
-    y,
-    ICON_SIZE,
-    ICON_SIZE,
-    WHITE
-  );
+//  screen.Fill_Rect(
+//    x,
+//    y,
+//    ICON_SIZE,
+//    ICON_SIZE,
+//    WHITE
+//  );
 
-  Serial.println("REQUEST ICON " + String(section));
+  //screen.Print_String(" Loading ", x + ICON_SIZE/16, y + ICON_SIZE*6/8);
+  //screen.Print_String("  icon   ", x + ICON_SIZE/16, y + ICON_SIZE*7/8);
+
+  Serial.println("{\"type\": \"icon_request\", \"index\": " + String(section) + "}");
   for (int yPos = 0; yPos < ICON_SIZE; yPos++) {
     for (int xPos = 0; xPos < ICON_SIZE; xPos++) {
       while(!Serial.available()) {
@@ -164,23 +176,24 @@ void render_icon(int section) {
       screen.Draw_Pixel(xPos + x, yPos + y);
     }
   }
+  iconNeedsUpdate[section] = false;
 }
 
 // Render a full section (icon, title, volume)
 void render_section(int section)
 {
   // Render title
-  screen.Print_String(
-    title[section],
-    xOrigin[section] + ICON_PADDING,
-    yOrigin[section] + (ICON_PADDING * 2) + ICON_SIZE
-  );
+  render_text(section);
 
   // Render volume bar
   render_volume(section);
 
   // Render Icon
+  //render_icon(section);
+}
 
+void clear_section(int section) {
+  screen.Fill_Rect(xOrigin[section], yOrigin[section], SECTION_WIDTH, SECTION_HEIGHT, BLACK);
 }
 
 // Render all sections
@@ -190,7 +203,10 @@ void render_full(void)
   //render_dividers();
 
   for (int i = 0; i < 4; i++) {
-    render_section(i);
+    if(active[i]) {
+      render_section(i);
+      render_icon(i);
+    }
   }
 }
 
@@ -241,38 +257,48 @@ void render_menu(void)
   );
 }
 
+void render_error(String message) {
+  screen.Fill_Screen(BLACK);
+  screen.Print_String("ERROR", 0,0);
+  screen.Print_String(message, 0, 50);
+}
+
+void render_waiting_on_serial() {
+  screen.Print_String("Waiting on", 0, 0);
+  screen.Print_String("Serial connection", 0, 50);
+}
+
 void setup(void)
 {
-  Serial.begin(74880);
+  Serial.begin(57600);
   screen.Init_LCD();
   screen.Set_Rotation(2);
-  Serial.println(screen.Read_ID(), HEX);
   screen.Fill_Screen(BLACK);
 
   // Setup graphics engine defaults
   screen.Set_Draw_color(WHITE);
-  screen.Set_Text_Mode(1);
+  screen.Set_Text_Back_colour(BLACK);
+  screen.Set_Text_Mode(0);
   screen.Set_Text_Size(2);
   screen.Set_Text_colour(WHITE);
 
-  //Read from test json
-//  DeserializationError err = deserializeJson(jsonDoc, testJsonInput);
-//  if(err) {
-//    Serial.print("ERROR:");
-//    Serial.println(err.c_str());
-//  }
-//
-//  const char* type = jsonDoc["type"];
-//  for(int i = 0; i < 4; i++) {
-//    title[i] = (char*)jsonDoc["applications"][i]["Title"];
-//    volume[i] = jsonDoc["applications"][i]["Volume"];
-//    color[i] = jsonDoc["applications"][i]["Color"];
-//  }
-
-  render_full();
-  for(int i = 0; i < 4; i++) {
-    render_icon(i);
+  bool waiting = false;
+  while(!Serial) {
+    delay(500);
+    if(!waiting && !Serial) {
+      render_waiting_on_serial();
+      waiting = true;
+    }
   }
+  screen.Fill_Screen(BLACK);
+
+  //Read from test json
+  checkForSerialCommand();
+
+  //render_full();
+//  for(int i = 0; i < 4; i++) {
+//    render_icon(i);
+//  }
   
 
   pinMode(13, OUTPUT);
@@ -290,13 +316,23 @@ void loop()
       newVolume[i] = map(analogRead(potPin[i]), 1024, 0, 0, 100);
     }
     for (int i = 0; i < 4; i++) {
-      if (newVolume[i] != volume[i]) {
+      if (newVolume[i] != volume[i] && active[i]) {
         volume[i] = newVolume[i];
         render_volume(i);
+        sendVolumeChangeRequest(i, volume[i]);
+      }
+    }
+
+    for(int i = 0; i < 4; i++){
+      if(iconNeedsUpdate[i] && active[i]){
+        render_icon(i);
       }
     }
   }
-  checkForSerialCommand();
+  
+  if(!checkForSerialCommand()) {
+    render_error("Serial read failed");
+  }
 
   // Do screen touching stuff
   digitalWrite(13, HIGH);
@@ -312,8 +348,12 @@ void loop()
     
     // Screen touched
     if(!menuOpen){
-      menuOpen = true;
-      render_menu();
+      //menuOpen = true;
+      //render_menu();
+      Serial.println("Titles now:");
+        for(String tit : title) {
+          Serial.println(tit);
+        }
     } else {
       if(y < screen.Get_Display_Height()/3) {
         // Turn off display button pressed
@@ -330,7 +370,11 @@ void loop()
   }
 }
 
-void checkForSerialCommand(){
+void sendVolumeChangeRequest(int section, int volume) {
+  Serial.println("{\"type\": \"volume_change\", \"index\": " + String(section) + ", \"volume\": " + String(volume) + "}");
+}
+
+bool checkForSerialCommand(){
   //Read from test json
 //  DeserializationError err = deserializeJson(jsonDoc, Serial);
 //  if(err) {
@@ -344,18 +388,32 @@ void checkForSerialCommand(){
     
     const char* type = root["type"];
     if(strcmp(type, "data") == 0) {
-      for(int i = 0; i < 4; i++) {
-        char* newTitle = (char*)root["applications"][i]["Title"];
-        if(sizeof(newTitle) > 0) {
+        
+      for(int i = 0; i < root["size"]; i++) {
+        active[i] = true;
+        const char* titleChar = (char*)root["applications"][i]["title"];
+        String newTitle = titleChar;
+
+        if(sizeof(newTitle) > 0 && newTitle.compareTo(title[i]) != 0) {
+          Serial.println("Updating title: " + title[i] + " -> " + newTitle);
           title[i] = newTitle;
+          iconNeedsUpdate[i] = true;
+          render_text(i);
         }
         //volume[i] = jsonDoc["applications"][i]["Volume"];
-        uint16_t newColor = root["applications"][i]["Color"];
-        if(newColor != BLACK) {
+        uint16_t newColor = root["applications"][i]["color"];
+        if(newColor != BLACK && newColor != color[i]) {
           color[i] = newColor;
+          render_volume(i);
         } 
       }
-      render_full();
+
+      for(int i = 3; i >= root["size"]; i--)
+      {
+        active[i] = false;
+        clear_section(i);
+      }
     }
   }
+  return true;
 }
