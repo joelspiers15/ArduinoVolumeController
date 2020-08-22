@@ -84,7 +84,9 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 #define BUTTON_WIDTH (screen.Get_Display_Width()/1.5)
 #define BUTTON_X_PADDING ((screen.Get_Display_Width() - BUTTON_WIDTH)/2)
 #define BUTTON_Y_PADDING ((screen.Get_Display_Height() - BUTTON_HEIGHT)/12)
+
 bool menuOpen = false;
+bool asleep = false;
 
 int16_t xOrigin[] = {0, SECTION_WIDTH, 0, SECTION_WIDTH};
 int16_t yOrigin[] = {0, 0, SECTION_HEIGHT, SECTION_HEIGHT};
@@ -201,11 +203,11 @@ void render_full(void)
 {
   
   //render_dividers();
+  screen.Fill_Screen(BLACK);
 
   for (int i = 0; i < 4; i++) {
     if(active[i]) {
       render_section(i);
-      render_icon(i);
     }
   }
 }
@@ -309,7 +311,7 @@ void setup(void)
 
 void loop()
 {
-  if(!menuOpen) {
+  if(!menuOpen && !asleep) {
     // Check for volume updates
     int newVolume[4];
     for (int i = 0; i < 4; i++) {
@@ -348,16 +350,17 @@ void loop()
     
     // Screen touched
     if(!menuOpen){
-      //menuOpen = true;
-      //render_menu();
-      Serial.println("Titles now:");
-        for(String tit : title) {
-          Serial.println(tit);
-        }
+      menuOpen = true;
+      asleep = false;
+      render_menu();
+      for(int i = 0; i < sizeof(iconNeedsUpdate); i++) {
+        iconNeedsUpdate[i] = true;
+      }
     } else {
       if(y < screen.Get_Display_Height()/3) {
         // Turn off display button pressed
         menuOpen = false;
+        asleep = true;
         screen.Fill_Screen(BLACK);
       } else if (y >= screen.Get_Display_Height()/3 && y < (screen.Get_Display_Height() * 2/3)) {
         // Button #2
@@ -388,24 +391,23 @@ bool checkForSerialCommand(){
     
     const char* type = root["type"];
     if(strcmp(type, "data") == 0) {
-        
+
+      // Loop through all apps and update any that have changed
       for(int i = 0; i < root["size"]; i++) {
         active[i] = true;
         const char* titleChar = (char*)root["applications"][i]["title"];
         String newTitle = titleChar;
 
+        // If the title of the current section has changed redraw everything
         if(sizeof(newTitle) > 0 && newTitle.compareTo(title[i]) != 0) {
           Serial.println("Updating title: " + title[i] + " -> " + newTitle);
           title[i] = newTitle;
+          color[i] = root["applications"][i]["color"];
           iconNeedsUpdate[i] = true;
+          clear_section(i);
           render_text(i);
-        }
-        //volume[i] = jsonDoc["applications"][i]["Volume"];
-        uint16_t newColor = root["applications"][i]["color"];
-        if(newColor != BLACK && newColor != color[i]) {
-          color[i] = newColor;
           render_volume(i);
-        } 
+        }
       }
 
       for(int i = 3; i >= root["size"]; i--)
