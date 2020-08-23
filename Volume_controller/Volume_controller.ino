@@ -315,7 +315,10 @@ void loop()
     // Check for volume updates
     int newVolume[4];
     for (int i = 0; i < 4; i++) {
-      newVolume[i] = map(analogRead(potPin[i]), 1024, 0, 0, 100);
+      newVolume[i] = map(analogRead(potPin[i]), 990, 0, 0, 100);
+      if(newVolume[i] > 100) {
+        newVolume[i] = 100;
+      }
     }
     for (int i = 0; i < 4; i++) {
       if (newVolume[i] != volume[i] && active[i]) {
