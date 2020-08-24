@@ -90,9 +90,9 @@ bool asleep = false;
 
 int16_t xOrigin[] = {0, SECTION_WIDTH, 0, SECTION_WIDTH};
 int16_t yOrigin[] = {0, 0, SECTION_HEIGHT, SECTION_HEIGHT};
-String title[] = {"a", "a", "a", "a"};
-uint8_t volume[] = {25, 50, 75, 100};
-uint16_t color[] = {0x9874, BLUE, YELLOW, RED};
+String title[] = {"", "", "", ""};
+uint8_t volume[] = {100, 100, 100, 100};
+uint16_t color[] = {BLACK, BLACK, BLACK, BLACK};
 uint8_t potPin[] = {15, 14, 13, 12};
 uint16_t icon[] = {NULL, NULL, NULL, NULL};
 bool active[] = {false, false, false, false};
@@ -152,32 +152,32 @@ void render_icon(int section) {
   int16_t x = xOrigin[section] + ICON_PADDING;
   int16_t y = yOrigin[section] + ICON_PADDING;
 
-//  screen.Fill_Rect(
-//    x,
-//    y,
-//    ICON_SIZE,
-//    ICON_SIZE,
-//    WHITE
-//  );
+  bool transEnded = false;
 
-  //screen.Print_String(" Loading ", x + ICON_SIZE/16, y + ICON_SIZE*6/8);
-  //screen.Print_String("  icon   ", x + ICON_SIZE/16, y + ICON_SIZE*7/8);
-
+  // Request icon from server
   Serial.println("{\"type\": \"icon_request\", \"index\": " + String(section) + "}");
+
+  // Loop to read data and write individual pixels to display
   for (int yPos = 0; yPos < ICON_SIZE; yPos++) {
+
+    while(!Serial.available()) {
+      delay(10);
+    }
+
+    byte line[ICON_SIZE * 2];
+    Serial.readBytes(line, ICON_SIZE * 2);
+    
     for (int xPos = 0; xPos < ICON_SIZE; xPos++) {
-      while(!Serial.available()) {
-        delay(10);
-      }
-      byte colorByte[2];
-      (uint16_t)Serial.readBytes(colorByte, 2);
-//      Serial.print("0x");
-//      Serial.println(color, HEX);
-      uint16_t color = word(colorByte[0], colorByte[1]);
+      uint16_t color = word(line[xPos * 2], line[(xPos * 2) + 1]);
+
+      // Draw pixel
       screen.Set_Draw_color(color);
       screen.Draw_Pixel(xPos + x, yPos + y);
     }
+    // Send back line acknowledgement
+    Serial.write(0xFF);
   }
+
   iconNeedsUpdate[section] = false;
 }
 
@@ -272,7 +272,7 @@ void render_waiting_on_serial() {
 
 void setup(void)
 {
-  Serial.begin(57600);
+  Serial.begin(74880);
   screen.Init_LCD();
   screen.Set_Rotation(2);
   screen.Fill_Screen(BLACK);
@@ -294,14 +294,7 @@ void setup(void)
   }
   screen.Fill_Screen(BLACK);
 
-  //Read from test json
-  checkForSerialCommand();
-
-  //render_full();
-//  for(int i = 0; i < 4; i++) {
-//    render_icon(i);
-//  }
-  
+  checkForSerialCommand();  
 
   pinMode(13, OUTPUT);
 }
