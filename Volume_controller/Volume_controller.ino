@@ -1,35 +1,3 @@
-/***********************************************************************************
-  This program is a demo of drawing
-  This demo was made for LCD modules with 8bit or 16bit data port.
-  This program requires the the LCDKIWI library.
-
-  File                : touch_pen.ino
-  Hardware Environment: Arduino UNO&Mega2560
-  Build Environment   : Arduino
-
-  Set the pins to the correct ones for your development shield or breakout board.
-  This demo use the BREAKOUT BOARD only and use these 8bit data lines to the LCD,
-  pin usage as follow:
-                   LCD_CS  LCD_CD  LCD_WR  LCD_RD  LCD_RST  SD_SS  SD_DI  SD_DO  SD_SCK
-      Arduino Uno    A3      A2      A1      A0      A4      10     11     12      13
-  Arduino Mega2560    A3      A2      A1      A0      A4      10     11     12      13
-
-                   LCD_D0  LCD_D1  LCD_D2  LCD_D3  LCD_D4  LCD_D5  LCD_D6  LCD_D7
-      Arduino Uno    8       9       2       3       4       5       6       7
-  Arduino Mega2560    8       9       2       3       4       5       6       7
-
-  Remember to set the pins to suit your display module!
-
-  @attention
-
-  THE PRESENT FIRMWARE WHICH IS FOR GUIDANCE ONLY AIMS AT PROVIDING CUSTOMERS
-  WITH CODING INFORMATION REGARDING THEIR PRODUCTS IN ORDER FOR THEM TO SAVE
-  TIME. AS A RESULT, QD electronic SHALL NOT BE HELD LIABLE FOR ANY
-  DIRECT, INDIRECT OR CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING
-  FROM THE CONTENT OF SUCH FIRMWARE AND/OR THE USE MADE BY CUSTOMERS OF THE
-  CODING INFORMATION CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
-**********************************************************************************/
-
 #include <TouchScreen.h> //touch library
 #include <LCDWIKI_GUI.h> //Core graphics library
 #include <LCDWIKI_KBV.h> //Hardware-specific library
@@ -37,10 +5,7 @@
 #include <avr/pgmspace.h>
 #include <ArduinoJson.h>
 
-//if the IC model is known or the modules is unreadable,you can use this constructed function
 LCDWIKI_KBV screen(ILI9486, A3, A2, A1, A0, A4); //model,cs,cd,wr,rd,reset
-//if the IC model is not known and the modules is readable,you can use this constructed function
-//LCDWIKI_KBV screen(320,480,A3,A2,A1,A0,A4);//width,height,cs,cd,wr,rd,reset
 
 #define YP A3  // must be an analog pin, use "An" notation!
 #define XM A2  // must be an analog pin, use "An" notation!
@@ -88,6 +53,8 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 bool menuOpen = false;
 bool asleep = false;
 
+// Arrays containing section specific data
+// Should probably be in structs but this works
 int16_t xOrigin[] = {0, SECTION_WIDTH, 0, SECTION_WIDTH};
 int16_t yOrigin[] = {0, 0, SECTION_HEIGHT, SECTION_HEIGHT};
 String title[] = {"", "", "", ""};
@@ -103,16 +70,8 @@ const byte numChars = 256;
 char receivedChars[numChars];
 bool newData = false;
 
-void render_dividers(void)
-{
-  screen.Set_Draw_color(WHITE);
-  screen.Draw_Fast_VLine(screen.Get_Display_Width() / 2, 0, screen.Get_Display_Height());
-  screen.Draw_Fast_VLine((screen.Get_Display_Width() / 2) - 1, 0, screen.Get_Display_Height());
-  screen.Draw_Fast_HLine(0, screen.Get_Display_Height() / 2, screen.Get_Display_Width());
-  screen.Draw_Fast_HLine(0, (screen.Get_Display_Height() / 2) - 1, screen.Get_Display_Width());
-}
 
-// Render just the text for a section
+// Render just the volume bar for a section
 void render_volume(int section) {
   int width = map(volume[section], 0, 100, 0, SECTION_WIDTH);
   screen.Fill_Rect(
@@ -148,6 +107,7 @@ void render_text(int section) {
   );
 }
 
+// Request and render an icon
 void render_icon(int section) {
   int16_t x = xOrigin[section] + ICON_PADDING;
   int16_t y = yOrigin[section] + ICON_PADDING;
@@ -157,24 +117,26 @@ void render_icon(int section) {
   // Request icon from server
   Serial.println("{\"type\": \"icon_request\", \"index\": " + String(section) + "}");
 
-  // Loop to read data and write individual pixels to display
+  // Loop to read data row by row and write individual pixels to display
   for (int yPos = 0; yPos < ICON_SIZE; yPos++) {
-
     while(!Serial.available()) {
       delay(10);
     }
 
-    byte line[ICON_SIZE * 2];
-    Serial.readBytes(line, ICON_SIZE * 2);
-    
+    // Read row data
+    byte row[ICON_SIZE * 2];
+    Serial.readBytes(row, ICON_SIZE * 2);
+
+    // Draw row
     for (int xPos = 0; xPos < ICON_SIZE; xPos++) {
-      uint16_t color = word(line[xPos * 2], line[(xPos * 2) + 1]);
+      uint16_t color = word(row[xPos * 2], row[(xPos * 2) + 1]);
 
       // Draw pixel
       screen.Set_Draw_color(color);
       screen.Draw_Pixel(xPos + x, yPos + y);
     }
-    // Send back line acknowledgement
+    
+    // Send back acknowledgement
     Serial.write(0xFF);
   }
 
@@ -189,9 +151,6 @@ void render_section(int section)
 
   // Render volume bar
   render_volume(section);
-
-  // Render Icon
-  //render_icon(section);
 }
 
 void clear_section(int section) {
@@ -201,8 +160,6 @@ void clear_section(int section) {
 // Render all sections
 void render_full(void)
 {
-  
-  //render_dividers();
   screen.Fill_Screen(BLACK);
 
   for (int i = 0; i < 4; i++) {
@@ -212,6 +169,7 @@ void render_full(void)
   }
 }
 
+// Render touch menu
 void render_menu(void)
 {
   screen.Fill_Screen(BLACK);
@@ -239,7 +197,7 @@ void render_menu(void)
     BLUE
   );
   screen.Print_String(
-    "Other",
+    "Change Default Device",
     BUTTON_X_PADDING + 60, 
     BUTTON_Y_PADDING * 2 + BUTTON_HEIGHT + 50
   );
@@ -257,12 +215,6 @@ void render_menu(void)
     BUTTON_X_PADDING + 30, 
     BUTTON_Y_PADDING*3 + BUTTON_HEIGHT*2 + 50
   );
-}
-
-void render_error(String message) {
-  screen.Fill_Screen(BLACK);
-  screen.Print_String("ERROR", 0,0);
-  screen.Print_String(message, 0, 50);
 }
 
 void render_waiting_on_serial() {
@@ -328,9 +280,7 @@ void loop()
     }
   }
   
-  if(!checkForSerialCommand()) {
-    render_error("Serial read failed");
-  }
+  checkForSerialCommand();
 
   // Do screen touching stuff
   digitalWrite(13, HIGH);
@@ -369,17 +319,14 @@ void loop()
   }
 }
 
+// Tell computer volume needs to change
 void sendVolumeChangeRequest(int section, int volume) {
   Serial.println("{\"type\": \"volume_change\", \"index\": " + String(section) + ", \"volume\": " + String(volume) + "}");
 }
 
 bool checkForSerialCommand(){
-  //Read from test json
-//  DeserializationError err = deserializeJson(jsonDoc, Serial);
-//  if(err) {
-//    Serial.print("ERROR:");
-//    Serial.println(err.c_str());
-//  }
+
+  // Check for and parse serial command
   if(Serial.available()){
     DynamicJsonBuffer jb;
     JsonObject& root = jb.parseObject(Serial);
