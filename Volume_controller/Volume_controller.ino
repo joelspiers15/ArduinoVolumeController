@@ -137,10 +137,23 @@ void render_icon(int section) {
     }
     
     // Send back acknowledgement
+    serialFlush();
     Serial.write(0xFF);
   }
 
+  while(!Serial.available()) {
+    delay(10);
+  }
+
+  // Expect end byte (0xFF)
+  uint16_t ack = 0;
+  while(ack != 0xFF) {
+    ack = Serial.read();
+  }
   iconNeedsUpdate[section] = false;
+
+  // Immediately check for serial update in case something changed while loading
+  checkForSerialCommand();
 }
 
 // Render a full section (icon, title, volume)
@@ -256,7 +269,7 @@ void setup(void)
 
 void loop()
 {
-  if(!menuOpen && !asleep) {
+  if(!menuOpen && !asleep) {    
     // Check for volume updates
     int newVolume[4];
     for (int i = 0; i < 4; i++) {
@@ -273,14 +286,16 @@ void loop()
       }
     }
 
+    checkForSerialCommand();
+
+    // Render 1 icon per program loop
     for(int i = 0; i < 4; i++){
       if(iconNeedsUpdate[i] && active[i]){
         render_icon(i);
+        break;
       }
     }
   }
-  
-  checkForSerialCommand();
 
   // Do screen touching stuff
   digitalWrite(13, HIGH);
@@ -330,11 +345,9 @@ bool checkForSerialCommand(){
   if(Serial.available()){
     DynamicJsonBuffer jb;
     JsonObject& root = jb.parseObject(Serial);
-  
     
     const char* type = root["type"];
     if(strcmp(type, "data") == 0) {
-
       // Loop through all apps and update any that have changed
       for(int i = 0; i < root["size"]; i++) {
         active[i] = true;
@@ -360,5 +373,13 @@ bool checkForSerialCommand(){
       }
     }
   }
+  
   return true;
 }
+
+// Wipe the incoming serial buffer
+void serialFlush(){
+  while(Serial.available() > 0) {
+    char t = Serial.read();
+  }
+}   
