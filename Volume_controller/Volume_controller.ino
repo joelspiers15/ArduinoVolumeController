@@ -65,10 +65,9 @@ uint16_t icon[] = {NULL, NULL, NULL, NULL};
 bool active[] = {false, false, false, false};
 bool iconNeedsUpdate[] = {false, false, false, false};
 
-// Serial input variables
-const byte numChars = 256;
-char receivedChars[numChars];
-bool newData = false;
+String defaultDevice = "";
+String devices[] = {"", "", "", "", "", ""};
+bool deviceMenuOpen;
 
 
 // Render just the volume bar for a section
@@ -182,10 +181,58 @@ void render_full(void)
   }
 }
 
+void render_device_menu(void) {
+  int padding = 25;
+  int buttonHeight = (screen.Get_Display_Height() - padding * 7) / 6;
+  
+  screen.Fill_Screen(BLACK);
+  for(int i = 0; i < 6; i++) {
+    int yPos = padding + (padding * i) + (buttonHeight * i);
+    if(!devices[i].equals("") && !devices[i].equals(defaultDevice)) {
+      // Render unselected device button
+      screen.Set_Text_Mode(0);
+      screen.Set_Text_colour(WHITE);
+      screen.Set_Draw_color(WHITE);
+      screen.Draw_Rectangle(
+        padding, 
+        yPos, 
+        (screen.Get_Display_Width() - padding * 2) + padding, 
+        buttonHeight + padding + (padding * i) + (buttonHeight * i)
+      );
+      screen.Print_String(
+        devices[i].substring(0,21),
+        padding + 10,
+        yPos + 20
+      );
+    } else if (devices[i].equals(defaultDevice)) {
+      // Render default device button
+      screen.Set_Text_Mode(0);
+      screen.Set_Text_colour(BLACK);
+      screen.Fill_Rect(
+        padding, 
+        yPos,
+        screen.Get_Display_Width() - padding * 2, 
+        buttonHeight,
+        WHITE
+      );
+      screen.Print_String(
+        devices[i].substring(0,21),
+        padding + 10,
+        yPos + 20
+      );
+    }
+  }
+  return;
+}
+
 // Render touch menu
 void render_menu(void)
 {
   screen.Fill_Screen(BLACK);
+  
+  screen.Set_Text_Mode(1);
+  screen.Set_Text_Size(3);
+  screen.Set_Text_colour(WHITE);
 
   //Button 1
   screen.Set_Draw_color(WHITE);
@@ -210,9 +257,14 @@ void render_menu(void)
     BLUE
   );
   screen.Print_String(
-    "Change Default Device",
-    BUTTON_X_PADDING + 60, 
-    BUTTON_Y_PADDING * 2 + BUTTON_HEIGHT + 50
+    "Device",
+    BUTTON_X_PADDING + 55, 
+    BUTTON_Y_PADDING * 2 + BUTTON_HEIGHT + 25
+  );
+  screen.Print_String(
+    "Chooser",
+    BUTTON_X_PADDING + 45, 
+    BUTTON_Y_PADDING * 2 + BUTTON_HEIGHT + 75
   );
 
   //Button 3
@@ -228,11 +280,20 @@ void render_menu(void)
     BUTTON_X_PADDING + 30, 
     BUTTON_Y_PADDING*3 + BUTTON_HEIGHT*2 + 50
   );
+
+  reset_text_defaults();
 }
 
 void render_waiting_on_serial() {
   screen.Print_String("Waiting on", 0, 0);
   screen.Print_String("Serial connection", 0, 50);
+}
+
+void reset_text_defaults() {
+  screen.Set_Text_Back_colour(BLACK);
+  screen.Set_Text_Mode(0);
+  screen.Set_Text_Size(2);
+  screen.Set_Text_colour(WHITE);
 }
 
 void setup(void)
@@ -244,10 +305,7 @@ void setup(void)
 
   // Setup graphics engine defaults
   screen.Set_Draw_color(WHITE);
-  screen.Set_Text_Back_colour(BLACK);
-  screen.Set_Text_Mode(0);
-  screen.Set_Text_Size(2);
-  screen.Set_Text_colour(WHITE);
+  reset_text_defaults();
 
   bool waiting = false;
   while(!Serial) {
@@ -269,7 +327,7 @@ void setup(void)
 
 void loop()
 {
-  if(!menuOpen && !asleep) {    
+  if(!menuOpen && !deviceMenuOpen && !asleep) {    
     // Check for volume updates
     int newVolume[4];
     for (int i = 0; i < 4; i++) {
@@ -305,19 +363,12 @@ void loop()
   pinMode(YP, OUTPUT);
   if (p.z > MINPRESSURE && p.z < MAXPRESSURE)
   {
-    Serial.println("[" + String(p.x) + "," + String(p.y) + "]");
+    //Serial.println("[" + String(p.x) + "," + String(p.y) + "]");
     int x = map(p.x, 0, 1000, 0, screen.Get_Display_Width());
     int y = map(p.y, 0, 1000, 0, screen.Get_Display_Height());
     
     // Screen touched
-    if(!menuOpen){
-      menuOpen = true;
-      asleep = false;
-      render_menu();
-      for(int i = 0; i < sizeof(iconNeedsUpdate); i++) {
-        iconNeedsUpdate[i] = true;
-      }
-    } else {
+    if (menuOpen) {
       if(y < screen.Get_Display_Height()/3) {
         // Turn off display button pressed
         menuOpen = false;
@@ -325,10 +376,34 @@ void loop()
         screen.Fill_Screen(BLACK);
       } else if (y >= screen.Get_Display_Height()/3 && y < (screen.Get_Display_Height() * 2/3)) {
         // Button #2
+        deviceMenuOpen = true;
+        menuOpen = false;
+        render_device_menu();
       } else if (y >= (screen.Get_Display_Height() * 2/3)) {
         // Close menu button pressed
         menuOpen = false;
         render_full();
+      }
+    } else if(deviceMenuOpen) {
+      for(int i = 1; i <= 6; i++) {
+        if(y <= screen.Get_Display_Height() * i/6 && !devices[i-1].equals("") && !devices[i-1].equals(defaultDevice)) {
+          screen.Fill_Screen(BLACK);
+          deviceMenuOpen = false;
+          serialFlush();
+          sendDeviceChangeRequest(i-1);
+          while(!Serial.available()) {
+            delay(10);
+          }
+          checkForSerialCommand();
+          return;
+        }
+      }
+    } else{
+      menuOpen = true;
+      asleep = false;
+      render_menu();
+      for(int i = 0; i < sizeof(iconNeedsUpdate); i++) {
+        iconNeedsUpdate[i] = true;
       }
     }
   }
@@ -337,6 +412,10 @@ void loop()
 // Tell computer volume needs to change
 void sendVolumeChangeRequest(int section, int volume) {
   Serial.println("{\"type\": \"volume_change\", \"index\": " + String(section) + ", \"volume\": " + String(volume) + "}");
+}
+
+void sendDeviceChangeRequest(int deviceIndex) {
+  Serial.println("{\"type\": \"device_change\", \"deviceName\": \"" + devices[deviceIndex] + "\" }");
 }
 
 bool checkForSerialCommand(){
@@ -351,6 +430,8 @@ bool checkForSerialCommand(){
       // Loop through all apps and update any that have changed
       for(int i = 0; i < root["size"]; i++) {
         active[i] = true;
+
+        //Weird string stuff I had to do to stop a memory reference bug causing undefined behavior
         const char* titleChar = (char*)root["applications"][i]["title"];
         String newTitle = titleChar;
 
@@ -365,11 +446,24 @@ bool checkForSerialCommand(){
           render_volume(i);
         }
       }
-
+      // Set all apps not included in packet as inactive
       for(int i = 3; i >= root["size"]; i--)
       {
         active[i] = false;
         clear_section(i);
+      }
+
+      //Loop through and update audio device list
+      const char* newDefaultDevice = (char*)root["defaultDevice"];
+      defaultDevice = String(newDefaultDevice);
+      for(int i = 0; i < root["deviceCount"]; i++ ) {
+        const char* deviceChar = (char*)root["audioDevices"][i];
+        String deviceName = deviceChar;
+        devices[i] = deviceName;
+      }
+      for(int i = 5; i >= root["deviceCount"]; i--)
+      {
+        devices[i] = "";
       }
     }
   }
