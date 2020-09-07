@@ -69,6 +69,8 @@ String defaultDevice = "";
 String devices[] = {"", "", "", "", "", ""};
 bool deviceMenuOpen;
 
+int logLevel = 5;
+
 
 // Render just the volume bar for a section
 void render_volume(int section) {
@@ -329,20 +331,7 @@ void loop()
 {
   if(!menuOpen && !deviceMenuOpen && !asleep) {    
     // Check for volume updates
-    int newVolume[4];
-    for (int i = 0; i < 4; i++) {
-      newVolume[i] = map(analogRead(potPin[i]), 1024, 10, 0, 100);
-      if(newVolume[i] > 100) {
-        newVolume[i] = 100;
-      }
-    }
-    for (int i = 0; i < 4; i++) {
-      if (newVolume[i] != volume[i] && active[i]) {
-        volume[i] = newVolume[i];
-        render_volume(i);
-        sendVolumeChangeRequest(i, volume[i]);
-      }
-    }
+    checkForVolumeChange();
 
     checkForSerialCommand();
 
@@ -409,6 +398,24 @@ void loop()
   }
 }
 
+// Checks potentiometers for changes and requests updates
+void checkForVolumeChange() {
+  int newVolume[4];
+  for (int i = 0; i < 4; i++) {
+    newVolume[i] = map(analogRead(potPin[i]), 1024, 10, 0, 100);
+    if(newVolume[i] > 100) {
+      newVolume[i] = 100;
+    }
+  }
+  for (int i = 0; i < 4; i++) {
+    if (newVolume[i] != volume[i] && active[i]) {
+      volume[i] = newVolume[i];
+      render_volume(i);
+      sendVolumeChangeRequest(i, volume[i]);
+    }
+  }
+}
+
 // Tell computer volume needs to change
 void sendVolumeChangeRequest(int section, int volume) {
   Serial.println("{\"type\": \"volume_change\", \"index\": " + String(section) + ", \"volume\": " + String(volume) + "}");
@@ -416,6 +423,12 @@ void sendVolumeChangeRequest(int section, int volume) {
 
 void sendDeviceChangeRequest(int deviceIndex) {
   Serial.println("{\"type\": \"device_change\", \"deviceName\": \"" + devices[deviceIndex] + "\" }");
+}
+
+void sendLogRequest(String message, int level) {
+  if(logLevel >= level) {
+    Serial.println("{\"type\": \"log\", \"level\": " + String(level) + ", \"message\": \"" + message + "\" }");
+  }
 }
 
 bool checkForSerialCommand(){
@@ -437,7 +450,7 @@ bool checkForSerialCommand(){
 
         // If the title of the current section has changed redraw everything
         if(sizeof(newTitle) > 0 && newTitle.compareTo(title[i]) != 0) {
-          Serial.println("Updating title: " + title[i] + " -> " + newTitle);
+          sendLogRequest("Updating title: " + title[i] + " -> " + newTitle, 5);
           title[i] = newTitle;
           color[i] = root["applications"][i]["color"];
           iconNeedsUpdate[i] = true;
